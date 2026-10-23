@@ -92,7 +92,7 @@ export function ChartView({ spec, height }: { spec: ChartSpec; height?: number }
       <ChartContainer config={config} className="mx-auto aspect-square w-full" style={{ maxHeight: h }}>
         <PieChart>
           <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel nameKey="__key" />} />
-          <Pie data={slices} dataKey={valueKey} nameKey="__key" innerRadius={variant === "donut" ? "55%" : 0} strokeWidth={4}>
+          <Pie data={slices} dataKey={valueKey} nameKey="__key" innerRadius={variant === "labels" ? 0 : "70%"} strokeWidth={4}>
             {slices.map((s) => <Cell key={s.__key} fill={s.fill} />)}
             {variant === "labels" && <LabelList dataKey={valueKey} className="fill-background" stroke="none" fontSize={11} formatter={(v: unknown) => fmt(v, unit)} />}
           </Pie>
@@ -120,6 +120,7 @@ export function ChartView({ spec, height }: { spec: ChartSpec; height?: number }
     />
   );
   const legend = !single && <ChartLegend content={<ChartLegendContent />} />;
+  // Areas always use the gradient fill and pies render as donuts (labels need a full pie).
   const curve = variant === "linear" ? "linear" : variant === "step" ? "step" : "natural";
   const labels = (k: string) =>
     variant === "labels" && <LabelList dataKey={k} position="top" offset={10} className="fill-foreground" fontSize={11} formatter={(v: unknown) => fmt(v, unit)} />;
@@ -175,8 +176,7 @@ export function ChartView({ spec, height }: { spec: ChartSpec; height?: number }
           {xAxis}{yAxis}{tooltip}{legend}
           {keys.map((k) => (
             <Area key={k.css} dataKey={k.css} type={curve} stroke={`var(--color-${k.css})`}
-              fill={variant === "gradient" ? `url(#fill-${k.css})` : `var(--color-${k.css})`}
-              fillOpacity={variant === "gradient" ? 1 : 0.4} stackId={variant === "stacked" ? "a" : undefined} />
+              fill={`url(#fill-${k.css})`} fillOpacity={1} stackId={variant === "stacked" ? "a" : undefined} />
           ))}
         </AreaChart>
       ) : (

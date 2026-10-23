@@ -10,9 +10,42 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { Dashboard, WidgetData } from "@/lib/types";
+import type { ChartSpec, Dashboard, WidgetData } from "@/lib/types";
 
 const SPAN = { 1: "lg:col-span-1", 2: "lg:col-span-2", 3: "lg:col-span-3" } as const;
+// Preview shown until live dashboards exist, matching the Revenue trend design.
+const SAMPLE_REVENUE_TREND: ChartSpec = {
+  type: "area", variant: "gradient", title: "Revenue trend", description: "Closed-won revenue, last 6 months",
+  xKey: "month", yKeys: ["Enterprise", "Mid Market"], unit: "USD",
+  data: [
+    { month: "May", Enterprise: 186_000, "Mid Market": 80_000 },
+    { month: "Jun", Enterprise: 205_000, "Mid Market": 92_000 },
+    { month: "Jul", Enterprise: 237_000, "Mid Market": 120_000 },
+    { month: "Aug", Enterprise: 173_000, "Mid Market": 190_000 },
+    { month: "Sep", Enterprise: 209_000, "Mid Market": 130_000 },
+    { month: "Oct", Enterprise: 264_000, "Mid Market": 140_000 },
+  ],
+  trend: { value: 5.2, label: "this month" }, footnote: "May – October 2026",
+};
+
+const SAMPLE_DEALS_BY_STAGE: ChartSpec = {
+  type: "pie", variant: "donut", title: "Deals by stage", description: "Count of open and closed deals",
+  xKey: "stage", yKeys: ["deals"],
+  data: [
+    { stage: "Closed won", deals: 14 },
+    { stage: "Negotiation", deals: 9 },
+    { stage: "Proposal", deals: 7 },
+    { stage: "Closed lost", deals: 5 },
+  ],
+};
+
+const SAMPLE_KPIS = [
+  { label: "Pipeline value", value: "$1.3M", delta: 8.4 },
+  { label: "Closed won", value: "$486.5K", delta: 12.1 },
+  { label: "Win rate", value: "62%", delta: -3.2 },
+  { label: "Open deals", value: "14", delta: 2.0 },
+];
+
 const NEW_DASHBOARD = "/assistant?q=Build%20a%20shortage%20recovery%20dashboard";
 
 function defaultSpan(w: WidgetData) {
@@ -27,14 +60,15 @@ export default function DashboardPage() {
   const [busy, setBusy] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
 
-  const loadList = useCallback(async (wanted?: string | null) => {
-    const r = await fetch("/api/dashboards");
-    const body = await r.json();
-    if (!r.ok) return setError(body.error ?? "Could not load dashboards");
-    const list = body as Dashboard[];
-    setDashboards(list);
-    setActive((cur) => list.find((d) => d.id === (wanted ?? cur))?.id ?? list[0]?.id ?? "");
-  }, []);
+  // State is set in .then callbacks so the effects below don't set state synchronously.
+  const loadList = useCallback((wanted?: string | null) =>
+    fetch("/api/dashboards").then(async (r) => {
+      const body = await r.json();
+      if (!r.ok) return setError(body.error ?? "Could not load dashboards");
+      const list = body as Dashboard[];
+      setDashboards(list);
+      setActive((cur) => list.find((d) => d.id === (wanted ?? cur))?.id ?? list[0]?.id ?? "");
+    }), []);
 
   useEffect(() => {
     loadList(new URLSearchParams(window.location.search).get("d"));
@@ -42,7 +76,6 @@ export default function DashboardPage() {
 
   const loadWidgets = useCallback((id: string) => {
     let live = true;
-    setWidgets(null);
     fetch(`/api/dashboards/${encodeURIComponent(id)}`).then(async (r) => {
       const body = await r.json();
       if (live) setWidgets(r.ok ? (body as WidgetData[]) : []);
@@ -53,6 +86,7 @@ export default function DashboardPage() {
   useEffect(() => (active ? loadWidgets(active) : undefined), [active, loadWidgets]);
 
   function select(id: string) {
+    setWidgets(null);
     setActive(id);
     window.history.replaceState(null, "", `?d=${encodeURIComponent(id)}`);
   }
@@ -95,7 +129,7 @@ export default function DashboardPage() {
           </div>
           <div className="flex items-center gap-2">
             {current && (
-              <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => loadWidgets(current.id)} aria-label="Refresh">
+              <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => { setWidgets(null); loadWidgets(current.id); }} aria-label="Refresh">
                 <RefreshCw />
               </Button>
             )}
@@ -146,6 +180,35 @@ export default function DashboardPage() {
               </Link>
             </CardContent>
           </Card>
+        )}
+
+        {(error || dashboards?.length === 0) && (
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            {SAMPLE_KPIS.map((k) => (
+              <Card key={k.label} size="sm">
+                <CardContent>
+                  <div className="text-sm text-muted-foreground">{k.label}</div>
+                  <div className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">{k.value}</div>
+                  <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <span className={`rounded px-1 py-0.5 font-medium tabular-nums ${k.delta >= 0 ? "bg-success-soft text-success" : "bg-danger-soft text-destructive"}`}>
+                      {k.delta >= 0 ? "+" : ""}{k.delta.toFixed(1)}%
+                    </span>
+                    vs prior period
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+        {(error || dashboards?.length === 0) && (
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <ChartCard
+              spec={SAMPLE_REVENUE_TREND}
+              className="lg:col-span-2"
+              action={<Badge variant="outline" className="border-warning/30 bg-warning-soft text-warning">Sample data</Badge>}
+            />
+            <ChartCard spec={SAMPLE_DEALS_BY_STAGE} />
+          </div>
         )}
 
         {active && widgets === null && <DashboardSkeleton />}

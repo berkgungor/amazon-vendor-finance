@@ -5,14 +5,14 @@ import { ChartView } from "./ChartView";
 import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import type { ChartSpec } from "@/lib/types";
 
-/** shadcn "charts" card layout: header (title + description), chart, trend footer. */
+/** shadcn "charts" card layout: header (title + description), chart, then a divider and trend footer on the card background. */
 export function ChartCard({ spec, action, className = "" }: { spec: ChartSpec; action?: ReactNode; className?: string }) {
   const bare = spec.type === "kpi";
   const up = (spec.trend?.value ?? 0) >= 0;
   return (
-    <Card className={`gap-4 ${className}`}>
+    <Card className={`gap-5 py-5 ${className}`}>
       <CardHeader>
-        <CardTitle>{spec.title}</CardTitle>
+        <CardTitle className="text-base">{spec.title}</CardTitle>
         {spec.description && <CardDescription>{spec.description}</CardDescription>}
         {action && <CardAction>{action}</CardAction>}
       </CardHeader>
@@ -20,7 +20,7 @@ export function ChartCard({ spec, action, className = "" }: { spec: ChartSpec; a
         <ChartView spec={spec} />
       </CardContent>
       {(spec.trend || spec.footnote) && (
-        <CardFooter className="flex-col items-start gap-1 text-sm">
+        <CardFooter className="flex-col items-start gap-1.5 bg-transparent pt-4 pb-5 text-sm">
           {spec.trend && (
             <div className="flex items-center gap-2 font-medium leading-none">
               Trending {up ? "up" : "down"} by {Math.abs(spec.trend.value).toFixed(1)}%{spec.trend.label ? ` ${spec.trend.label}` : ""}
