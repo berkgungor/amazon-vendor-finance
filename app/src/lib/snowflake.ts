@@ -79,6 +79,13 @@ export async function restAuthHeaders(): Promise<Record<string, string>> {
       "X-Snowflake-Authorization-Token-Type": "OAUTH",
     };
   }
+  // Local dev with a programmatic access token in .env.local (SNOWFLAKE_PASSWORD holds the PAT).
+  if (process.env.SNOWFLAKE_USER && process.env.SNOWFLAKE_PASSWORD) {
+    return {
+      Authorization: `Bearer ${process.env.SNOWFLAKE_PASSWORD}`,
+      "X-Snowflake-Authorization-Token-Type": "PROGRAMMATIC_ACCESS_TOKEN",
+    };
+  }
   return { Authorization: sdk.getRestApiAuthHeader(), "X-Snowflake-Authorization-Token-Type": "OAUTH" };
 }
 

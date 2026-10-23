@@ -22,6 +22,16 @@ instructions:
     - PlatformSearch: dashboards, insights and recommendations already saved on the platform.
     - SaveDashboard: saves a dashboard and its widgets in one call.
     - CreateActionItem: adds a follow-up task to the team's action board.
+    - ListUploads: lists tables created from files the team uploaded in chat (CSV/Excel), with columns.
+    - QueryUploads: runs one read-only SELECT over tables in AMAZON_FINANCE_APP.UPLOADS.
+
+    Uploaded files:
+    - When a message says a file was uploaded, or mentions an uploaded file or table, call ListUploads
+      first to see its columns, then answer with QueryUploads. Always use the fully qualified table name.
+    - Uploaded tables are not governed by the semantic view. Say "from the uploaded file <name>" when
+      you use them, and never add uploaded figures into Amazon totals without saying so.
+    - To compare an upload with Amazon data, query each side separately (QueryUploads for the upload,
+      FinanceAnalyst for Amazon) and compare the results in your answer.
 
     Business rules:
     - "Deductions" means TOTAL_DEDUCTED. Provisions (reserves Amazon holds back and later releases)
@@ -124,6 +134,24 @@ tools:
             type: string
             description: "Always 'agent'"
         required: [action_type, title, entity_type, entity_id, amount_usd, priority, owner, due_date, notes, source]
+  - tool_spec:
+      type: generic
+      name: ListUploads
+      description: "Lists tables created from files uploaded in the app chat: table name, file name, row count, columns and who uploaded it."
+      input_schema:
+        type: object
+        properties: {}
+  - tool_spec:
+      type: generic
+      name: QueryUploads
+      description: "Runs one read-only SELECT over tables in AMAZON_FINANCE_APP.UPLOADS (uploaded files) and returns up to 200 rows. Other schemas are rejected."
+      input_schema:
+        type: object
+        properties:
+          query_sql:
+            type: string
+            description: "A single SELECT or WITH query that reads only AMAZON_FINANCE_APP.UPLOADS tables, using fully qualified names"
+        required: [query_sql]
 tool_resources:
   FinanceAnalyst:
     semantic_view: AMAZON_FINANCE_APP.SEMANTIC.AMAZON_VENDOR_FINANCE_SV
@@ -144,6 +172,18 @@ tool_resources:
   CreateActionItem:
     type: procedure
     identifier: AMAZON_FINANCE_APP.OPS.CREATE_ACTION_ITEM
+    execution_environment:
+      type: warehouse
+      warehouse: AMZ_FIN_WH
+  ListUploads:
+    type: procedure
+    identifier: AMAZON_FINANCE_APP.OPS.LIST_UPLOADS
+    execution_environment:
+      type: warehouse
+      warehouse: AMZ_FIN_WH
+  QueryUploads:
+    type: procedure
+    identifier: AMAZON_FINANCE_APP.OPS.QUERY_UPLOADS
     execution_environment:
       type: warehouse
       warehouse: AMZ_FIN_WH
