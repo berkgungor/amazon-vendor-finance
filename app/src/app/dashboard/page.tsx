@@ -27,14 +27,15 @@ export default function DashboardPage() {
   const [busy, setBusy] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
 
-  const loadList = useCallback(async (wanted?: string | null) => {
-    const r = await fetch("/api/dashboards");
-    const body = await r.json();
-    if (!r.ok) return setError(body.error ?? "Could not load dashboards");
-    const list = body as Dashboard[];
-    setDashboards(list);
-    setActive((cur) => list.find((d) => d.id === (wanted ?? cur))?.id ?? list[0]?.id ?? "");
-  }, []);
+  // State is set in .then callbacks so the effects below don't set state synchronously.
+  const loadList = useCallback((wanted?: string | null) =>
+    fetch("/api/dashboards").then(async (r) => {
+      const body = await r.json();
+      if (!r.ok) return setError(body.error ?? "Could not load dashboards");
+      const list = body as Dashboard[];
+      setDashboards(list);
+      setActive((cur) => list.find((d) => d.id === (wanted ?? cur))?.id ?? list[0]?.id ?? "");
+    }), []);
 
   useEffect(() => {
     loadList(new URLSearchParams(window.location.search).get("d"));
@@ -42,7 +43,6 @@ export default function DashboardPage() {
 
   const loadWidgets = useCallback((id: string) => {
     let live = true;
-    setWidgets(null);
     fetch(`/api/dashboards/${encodeURIComponent(id)}`).then(async (r) => {
       const body = await r.json();
       if (live) setWidgets(r.ok ? (body as WidgetData[]) : []);
@@ -53,6 +53,7 @@ export default function DashboardPage() {
   useEffect(() => (active ? loadWidgets(active) : undefined), [active, loadWidgets]);
 
   function select(id: string) {
+    setWidgets(null);
     setActive(id);
     window.history.replaceState(null, "", `?d=${encodeURIComponent(id)}`);
   }
@@ -95,7 +96,7 @@ export default function DashboardPage() {
           </div>
           <div className="flex items-center gap-2">
             {current && (
-              <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => loadWidgets(current.id)} aria-label="Refresh">
+              <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => { setWidgets(null); loadWidgets(current.id); }} aria-label="Refresh">
                 <RefreshCw />
               </Button>
             )}

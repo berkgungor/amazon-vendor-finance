@@ -1,15 +1,16 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { Bot, Box, Database, Loader2, Mail, MessageSquare, Plug, RefreshCw, Snowflake } from "lucide-react";
+import { Bot, Database, Loader2, Mail, MessageSquare, Plug, RefreshCw, Search, Snowflake } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 
+type Check<T> = { ok: boolean; ms: number; value?: T; error?: string };
 type Status = {
-  snowflake: { ok: boolean; ms: number; error?: string; value?: { ROLE: string; WH: string }[] };
-  mcp: { ok: boolean; ms?: number; error?: string; tools?: { name: string; description?: string }[] };
-  anthropic: { ok: boolean; model: string };
-  sandbox: { ok: boolean; note: string };
+  identity: Check<{ user: string; role: string; warehouse: string }>;
+  agent: Check<{ name: string }>;
+  semanticView: Check<{ total_invoiced: number }>;
+  search: Check<{ results: number }>;
 };
 
 function StatusBadge({ state }: { state: "connected" | "error" | "soon" | "loading" }) {
@@ -46,13 +47,13 @@ export default function IntegrationsPage() {
 
   const fetchStatus = useCallback(() => {
     fetch("/api/integrations")
-      .then(async (r) => setS(await r.json()))
+      .then(async (r) => setS(r.ok ? await r.json() : null))
       .catch(() => setS(null))
       .finally(() => setLoading(false));
   }, []);
   useEffect(() => { fetchStatus(); }, [fetchStatus]);
 
-  const st = (ok?: boolean) => (loading || !s ? "loading" : ok ? "connected" : "error") as "connected" | "error" | "loading";
+  const st = (ok?: boolean) => (loading ? "loading" : ok ? "connected" : "error") as "connected" | "error" | "loading";
 
   return (
     <div className="h-full overflow-y-auto">
@@ -60,7 +61,7 @@ export default function IntegrationsPage() {
         <div className="mx-auto flex max-w-4xl items-center justify-between gap-4 px-4 sm:px-8 py-5">
           <div>
             <h1 className="flex items-center gap-2 text-lg font-semibold tracking-tight"><Plug className="size-5" /> Integrations</h1>
-            <p className="text-sm text-muted-foreground">Systems the assistant connects to</p>
+            <p className="text-sm text-muted-foreground">Systems the app and assistant connect to</p>
           </div>
           <Button size="sm" variant="outline" onClick={() => { setLoading(true); fetchStatus(); }} disabled={loading}>
             {loading ? <Loader2 className="animate-spin" /> : <RefreshCw />} Re-check
@@ -71,20 +72,23 @@ export default function IntegrationsPage() {
       <div className="mx-auto max-w-4xl space-y-6 px-4 sm:px-8 py-6">
         <section className="space-y-3">
           <h2 className="text-sm font-medium text-muted-foreground">Data & AI</h2>
-          <Integration icon={Snowflake} tone="bg-info-soft text-info" title="Snowflake Cortex Agent"
-            description="Governed sales metrics and call transcripts via managed MCP"
-            state={st(s?.mcp.ok)}
-            detail={s ? (s.mcp.ok ? `Tools: ${s.mcp.tools?.map((t) => t.name).join(", ") || "none"} · ${s.mcp.ms} ms` : s.mcp.error) : undefined} />
-          <Integration icon={Database} tone="bg-muted text-foreground" title="Snowflake workspace"
-            description="Stores conversations, dashboards and action items"
-            state={st(s?.snowflake.ok)}
-            detail={s ? (s.snowflake.ok ? `Role ${s.snowflake.value?.[0]?.ROLE} · warehouse ${s.snowflake.value?.[0]?.WH}` : s.snowflake.error) : undefined} />
-          <Integration icon={Bot} tone="bg-muted text-foreground" title={`Anthropic · ${s?.anthropic.model ?? "Claude"}`}
-            description="Reasoning, charts and dashboard generation"
-            state={st(s?.anthropic.ok)} detail={s && !s.anthropic.ok ? "API key not configured" : undefined} />
-          <Integration icon={Box} tone="bg-muted text-foreground" title="Vercel Sandbox"
-            description="Isolated runtime for each conversation"
-            state={st(s?.sandbox.ok)} detail={s && !s.sandbox.ok ? s.sandbox.note : undefined} />
+          <p className="text-xs text-muted-foreground">Each check runs as you, so this shows what your role can reach.</p>
+          <Integration icon={Database} tone="bg-muted text-foreground" title="Snowflake session"
+            description="Signed-in user, role and warehouse used for every query"
+            state={st(s?.identity.ok)}
+            detail={s ? (s.identity.ok ? `${s.identity.value?.user} · role ${s.identity.value?.role} · warehouse ${s.identity.value?.warehouse}` : s.identity.error) : undefined} />
+          <Integration icon={Bot} tone="bg-info-soft text-info" title="Cortex Agent"
+            description="Answers questions, builds dashboards and creates action items"
+            state={st(s?.agent.ok)}
+            detail={s ? (s.agent.ok ? `${s.agent.value?.name} · ${s.agent.ms} ms` : s.agent.error) : undefined} />
+          <Integration icon={Snowflake} tone="bg-muted text-foreground" title="Finance semantic view"
+            description="Governed metrics for invoices, deductions, shortages and payments"
+            state={st(s?.semanticView.ok)}
+            detail={s ? (s.semanticView.ok ? `Responding · ${s.semanticView.ms} ms` : s.semanticView.error) : undefined} />
+          <Integration icon={Search} tone="bg-muted text-foreground" title="Cortex Search"
+            description="Finds saved dashboards, insights and recommendations"
+            state={st(s?.search.ok)}
+            detail={s ? (s.search.ok ? `Index reachable · ${s.search.ms} ms` : s.search.error) : undefined} />
         </section>
 
         <section className="space-y-3">

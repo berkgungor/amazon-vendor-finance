@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Vendored assistant-ui registry components (managed by `shadcn add @assistant-ui/...`)
     "src/components/assistant-ui/**",
+    // Vendored Snowflake App Runtime SDK
+    "src/lib/sar-sdk/**",
   ]),
 ]);
 
