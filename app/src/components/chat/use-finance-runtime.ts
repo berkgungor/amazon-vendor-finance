@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { useExternalStoreRuntime, type AppendMessage, type ThreadMessageLike } from "@assistant-ui/react";
-import type { AgentEvent, Message } from "@/lib/types";
+import { useExternalStoreRuntime, type AppendMessage, type AttachmentAdapter, type ThreadMessageLike } from "@assistant-ui/react";
+import type { AgentEvent, Message, UploadResult } from "@/lib/types";
 
 type Part = Exclude<ThreadMessageLike["content"], string>[number];
 type Msg = ThreadMessageLike & { id: string };
@@ -10,7 +10,36 @@ let seq = 0;
 const uid = (p: string) => `${p}-${Date.now().toString(36)}-${(seq++).toString(36)}`;
 
 /** UI tool names rendered by the chat toolkit (see toolkit.tsx). */
-export const UI_TOOLS = { chart: "ui_chart", dashboard: "ui_dashboard", actions: "ui_action_items", error: "ui_error" } as const;
+export const UI_TOOLS = { chart: "ui_chart", dashboard: "ui_dashboard", actions: "ui_action_items", upload: "ui_upload", error: "ui_error" } as const;
+
+const UPLOAD_PREFIX = "[snowflake-upload]";
+
+/**
+ * CSV/xlsx attachments: on send, the file goes to /api/uploads, which loads it into a new
+ * Snowflake table (AMAZON_FINANCE_APP.UPLOADS). The completed attachment carries the result so
+ * the chat request can tell the agent about the new table.
+ */
+export const uploadAdapter: AttachmentAdapter = {
+  accept: ".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  async add({ file }) {
+    return { id: uid("f"), type: "document", name: file.name, contentType: file.type, file, status: { type: "requires-action", reason: "composer-send" } };
+  },
+  async send(attachment) {
+    const form = new FormData();
+    form.append("file", attachment.file);
+    const r = await fetch("/api/uploads", { method: "POST", body: form });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(body.error ?? `Upload failed (${r.status})`);
+    return { ...attachment, status: { type: "complete" }, content: [{ type: "text", text: UPLOAD_PREFIX + JSON.stringify(body) }] };
+  },
+  async remove() {},
+};
+
+function uploadsFrom(message: AppendMessage): UploadResult[] {
+  return (message.attachments ?? []).flatMap((a) =>
+    (a.content ?? []).flatMap((p) => (p.type === "text" && p.text.startsWith(UPLOAD_PREFIX) ? [JSON.parse(p.text.slice(UPLOAD_PREFIX.length)) as UploadResult] : [])),
+  );
+}
 
 /**
  * Converts the backend's AgentEvent stream (and persisted events) into assistant-ui
@@ -28,6 +57,8 @@ export function eventsToParts(events: AgentEvent[], text: string): Part[] {
       parts.push({ type: "tool-call", toolCallId: uid("d"), toolName: UI_TOOLS.dashboard, args: {}, result: e });
     } else if (e.type === "action_items") {
       parts.push({ type: "tool-call", toolCallId: uid("a"), toolName: UI_TOOLS.actions, args: {}, result: e.items });
+    } else if (e.type === "upload") {
+      parts.push({ type: "tool-call", toolCallId: uid("f"), toolName: UI_TOOLS.upload, args: {}, result: e.upload });
     } else if (e.type === "error") {
       parts.push({ type: "tool-call", toolCallId: uid("e"), toolName: UI_TOOLS.error, args: {}, result: e.text });
     }
@@ -40,7 +71,7 @@ export function eventsToParts(events: AgentEvent[], text: string): Part[] {
 export function fromStored(rows: Message[]): Msg[] {
   return rows.map((m) =>
     m.role === "user"
-      ? { id: m.id, role: "user", content: [{ type: "text", text: m.content }] }
+      ? { id: m.id, role: "user", content: [{ type: "text", text: m.content.split("\n\n[Uploaded files")[0] || "Uploaded a file" }] }
       : { id: m.id, role: "assistant", content: eventsToParts(m.events ?? [], m.content), status: { type: "complete", reason: "stop" } },
   );
 }
@@ -55,7 +86,9 @@ export function useFinanceRuntime(opts: { chatId?: string; onChatId: (id: string
 
   const onNew = useCallback(async (message: AppendMessage) => {
     const text = message.content.map((p) => (p.type === "text" ? p.text : "")).join("").trim();
-    if (!text) return;
+    const uploads = uploadsFrom(message);
+    if (!text && !uploads.length) return;
+    const shown = text || `Uploaded ${uploads.map((u) => u.file).join(", ")}`;
 
     const assistantId = uid("m");
     const events: AgentEvent[] = [];
@@ -67,7 +100,7 @@ export function useFinanceRuntime(opts: { chatId?: string; onChatId: (id: string
 
     setMessages((all) => [
       ...all,
-      { id: uid("u"), role: "user", content: [{ type: "text", text }] },
+      { id: uid("u"), role: "user", content: [{ type: "text", text: shown }] },
       { id: assistantId, role: "assistant", content: [], status: { type: "running" } },
     ]);
     setIsRunning(true);
@@ -78,7 +111,7 @@ export function useFinanceRuntime(opts: { chatId?: string; onChatId: (id: string
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chatId: chatIdRef.current, message: text }),
+        body: JSON.stringify({ chatId: chatIdRef.current, message: text, uploads }),
         signal: abort.current.signal,
       });
       if (!res.ok || !res.body) throw new Error(`Request failed (${res.status})`);
@@ -133,6 +166,7 @@ export function useFinanceRuntime(opts: { chatId?: string; onChatId: (id: string
     suggestions: followups,
     onNew,
     onCancel: async () => abort.current?.abort(),
+    adapters: { attachments: uploadAdapter },
     convertMessage: (m) => m,
   });
 

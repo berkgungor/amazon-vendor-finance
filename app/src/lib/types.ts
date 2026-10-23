@@ -87,8 +87,18 @@ export type AgentEvent =
   | { type: "chart"; spec: ChartSpec }
   | { type: "dashboard"; id: string; name: string; widgets: number }
   | { type: "action_items"; items: ActionItem[] }
+  | { type: "upload"; upload: UploadResult }
   | { type: "error"; text: string }
   | { type: "done"; text: string; chatId: string };
+
+/** A file uploaded in chat and loaded into AMAZON_FINANCE_APP.UPLOADS (OPS.LOAD_UPLOAD). */
+export type UploadResult = {
+  file: string;
+  table: string;
+  rows: number;
+  columns: { name: string; type: string }[];
+  preview: Record<string, string | number | null>[];
+};
 
 export type Message = {
   id: string;

@@ -3,13 +3,13 @@ import { useState } from "react";
 import { toast } from "sonner";
 import Link from "next/link";
 import type { Toolkit, ToolCallMessagePartComponent } from "@assistant-ui/react";
-import { AlertCircle, ArrowUpRight, CheckCircle2, CheckSquare, Database, LayoutDashboard, Loader2, Plus, Search } from "lucide-react";
+import { AlertCircle, ArrowUpRight, CheckCircle2, CheckSquare, Database, FileSpreadsheet, LayoutDashboard, Loader2, Plus, Search } from "lucide-react";
 import { DecisionBar } from "@/components/DecisionBar";
 import { ChartCard } from "@/components/ChartCard";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import type { ActionItem, AgentEvent, ChartSpec, Dashboard } from "@/lib/types";
+import type { ActionItem, AgentEvent, ChartSpec, Dashboard, UploadResult } from "@/lib/types";
 import { UI_TOOLS } from "./use-finance-runtime";
 
 const TOOL_LABEL: Record<string, { label: string; icon: typeof Database }> = {
@@ -17,6 +17,8 @@ const TOOL_LABEL: Record<string, { label: string; icon: typeof Database }> = {
   PlatformSearch: { label: "Cortex Search · saved dashboards & insights", icon: Search },
   SaveDashboard: { label: "Saving dashboard", icon: LayoutDashboard },
   CreateActionItem: { label: "Adding action item", icon: CheckSquare },
+  ListUploads: { label: "Uploaded files · listing tables", icon: FileSpreadsheet },
+  QueryUploads: { label: "Uploaded files · querying", icon: FileSpreadsheet },
 };
 
 const AgentTool: ToolCallMessagePartComponent = ({ toolName, args, result }) => {
@@ -183,6 +185,39 @@ const ActionsUI: ToolCallMessagePartComponent = ({ result }) => {
   );
 };
 
+const UploadUI: ToolCallMessagePartComponent = ({ result }) => {
+  const u = result as UploadResult | undefined;
+  if (!u) return null;
+  const cols = u.preview[0] ? Object.keys(u.preview[0]) : u.columns.map((c) => c.name);
+  return (
+    <Card size="sm" className="my-3">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><FileSpreadsheet className="size-4 text-success" /> {u.file} uploaded to Snowflake</CardTitle>
+        <CardDescription className="font-mono text-xs">{u.table} · {u.rows.toLocaleString("en-US")} rows</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex flex-wrap gap-1">
+          {u.columns.map((c) => (
+            <Badge key={c.name} variant="outline" className="font-mono text-[11px]">{c.name} <span className="text-muted-foreground">{c.type.toLowerCase()}</span></Badge>
+          ))}
+        </div>
+        {u.preview.length > 0 && (
+          <div className="overflow-x-auto rounded-md border">
+            <table className="w-full text-xs">
+              <thead className="bg-muted/50"><tr>{cols.map((c) => <th key={c} className="px-2 py-1 text-left font-medium text-muted-foreground">{c}</th>)}</tr></thead>
+              <tbody>
+                {u.preview.map((r, i) => (
+                  <tr key={i} className="border-t">{cols.map((c) => <td key={c} className="px-2 py-1 tabular-nums">{r[c] == null ? "" : String(r[c])}</td>)}</tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
 const ErrorUI: ToolCallMessagePartComponent = ({ result }) => (
   <div className="my-2 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
     <AlertCircle className="mt-0.5 size-4 shrink-0" />
@@ -196,5 +231,6 @@ export const chatToolkit: Toolkit = {
   [UI_TOOLS.chart]: { type: "backend", render: ChartUI },
   [UI_TOOLS.dashboard]: { type: "backend", render: DashboardUI },
   [UI_TOOLS.actions]: { type: "backend", render: ActionsUI },
+  [UI_TOOLS.upload]: { type: "backend", render: UploadUI },
   [UI_TOOLS.error]: { type: "backend", render: ErrorUI },
 };
