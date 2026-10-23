@@ -83,8 +83,8 @@ ORDER BY deducted_amount DESC
 LIMIT 1;
 
 -- Q09 How much has Amazon claimed but not yet deducted?
--- Expected: $345,794.80, mostly Damage allowance $177,907.72 and AVS/SVS $125,446.66;
--- then Co-op $23,530.01, Operational chargeback $15,624.25, Returns $2,668.16.
+-- Expected: $345,794.80: Damage allowance $177,907.72, AVS/SVS $125,446.66, Co-op $23,530.01,
+-- Operational chargeback $15,624.25, Returns $2,668.16, Other $599.94, Missed adjustment $18.06.
 SELECT category, SUM(not_yet_applied_amount) AS claimed_not_yet_deducted
 FROM STG_DEDUCTION_CLAIMS
 GROUP BY ROLLUP (category)
@@ -162,9 +162,10 @@ ORDER BY shortage_deducted DESC
 LIMIT 1;
 
 -- Q19 What were the outcomes of our shortage disputes?
--- Expected: 839 disputes. Approved 356 ($164,032.10 shortage, $36,746.75 recovered);
+-- Expected: 839 disputes. By item outcome: Approved 356 ($164,032.10 shortage, $36,746.75 recovered);
 -- Partially approved 62 ($87,667.46, $6,907.66 recovered); Denied 278 ($82,399.37, $0);
--- Pending 189 ($74,379.13, $0). Total recovered $43,654.41.
+-- Pending 189 ($74,379.13, $0). Total recovered $43,654.41. The status counts sum to 885, not 839:
+-- 39 disputes have items with more than one outcome, so they appear under several statuses.
 SELECT dispute_status, COUNT(DISTINCT dispute_id) AS disputes,
        SUM(shortage_amount) AS shortage, SUM(resolved_amount) AS recovered
 FROM STG_DISPUTES
@@ -195,7 +196,7 @@ LIMIT 1;
 SELECT COUNT(*) AS coop_invoices, SUM(coop_amount) AS coop_billed
 FROM STG_COOP;
 
--- Q23 How much co-op did we pay by agreement?
+-- Q23 How much co-op did Amazon bill us, by agreement?
 -- Expected: Other $1,285,565.33; Co-op ACCRUAL $305,439.40; STRAIGHT_PAYMENT $173,546.00;
 -- Freight Allowance $153,089.70; Business pricing agreement $82,380.84; Damage Allowance $77,883.29;
 -- VPC SNS $23,285.86; VPC $13,034.45.
