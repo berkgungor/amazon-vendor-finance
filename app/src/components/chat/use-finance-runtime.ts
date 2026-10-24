@@ -10,7 +10,7 @@ let seq = 0;
 const uid = (p: string) => `${p}-${Date.now().toString(36)}-${(seq++).toString(36)}`;
 
 /** UI tool names rendered by the chat toolkit (see toolkit.tsx). */
-export const UI_TOOLS = { chart: "ui_chart", dashboard: "ui_dashboard", actions: "ui_action_items", upload: "ui_upload", error: "ui_error" } as const;
+export const UI_TOOLS = { chart: "ui_chart", dashboard: "ui_dashboard", actions: "ui_action_items", upload: "ui_upload", insight: "ui_insight", error: "ui_error" } as const;
 
 const UPLOAD_PREFIX = "[snowflake-upload]";
 
@@ -57,6 +57,8 @@ export function eventsToParts(events: AgentEvent[], text: string): Part[] {
       parts.push({ type: "tool-call", toolCallId: uid("d"), toolName: UI_TOOLS.dashboard, args: {}, result: e });
     } else if (e.type === "action_items") {
       parts.push({ type: "tool-call", toolCallId: uid("a"), toolName: UI_TOOLS.actions, args: {}, result: e.items });
+    } else if (e.type === "insight") {
+      parts.push({ type: "tool-call", toolCallId: uid("i"), toolName: UI_TOOLS.insight, args: {}, result: e });
     } else if (e.type === "upload") {
       parts.push({ type: "tool-call", toolCallId: uid("f"), toolName: UI_TOOLS.upload, args: {}, result: e.upload });
     } else if (e.type === "error") {

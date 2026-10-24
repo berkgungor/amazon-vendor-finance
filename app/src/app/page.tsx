@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, CircleCheck, Clock, ListChecks, Sparkles, TrendingUp } from "lucide-react";
@@ -36,7 +36,9 @@ function MetricCard({ label, value, hint, pct, good }: { label: string; value: s
 
 export default function TodayPage() {
   const router = useRouter();
-  const { ready, sample, recommendations, items, metrics } = useOps();
+  const { ready, sample, recommendations, items, metrics, reload } = useOps();
+  // The agent creates insights and action items from chat, so load fresh data on every visit.
+  useEffect(() => { reload(); }, [reload]);
   const [q, setQ] = useState("");
   // Time of day is client-only; the prerender shows a neutral greeting.
   const hello = useSyncExternalStore(noop, greeting, () => "Welcome back");
@@ -45,13 +47,29 @@ export default function TodayPage() {
     () => recommendations.filter((r) => r.status === "new").sort((a, b) => b.estimated_value_usd - a.estimated_value_usd),
     [recommendations],
   );
-  const atStake = open.reduce((s, r) => s + r.estimated_value_usd, 0);
+  // Money at stake: open action items (most come from the agent's insights) plus recommendations
+  // still waiting for a decision.
+  const openItems = useMemo(
+    () => items.filter((i) => (i.status === "open" || i.status === "in_progress") && (i.amount_usd ?? 0) > 0),
+    [items],
+  );
+  const atStake = open.reduce((s, r) => s + r.estimated_value_usd, 0) + openItems.reduce((s, i) => s + (i.amount_usd ?? 0), 0);
+  const stakeLabel = [
+    openItems.length ? `${openItems.length} open action item${openItems.length === 1 ? "" : "s"}` : "",
+    open.length ? `${open.length} open recommendation${open.length === 1 ? "" : "s"}` : "",
+  ].filter(Boolean).join(" and ") || "no open actions or recommendations";
   const byArea = useMemo(() => {
-    const areaOf: Record<string, string> = { dispute_shortage: "shortage_recovery", fix_root_cause: "shortage_recovery", classify_deductions: "unexplained_deductions", resolve_deduction: "unexplained_deductions", chase_payment: "cash_collection" };
+    const areaOf: Record<string, string> = {
+      dispute_shortage: "shortage_recovery", fix_root_cause: "shortage_recovery",
+      classify_deductions: "unexplained_deductions", resolve_deduction: "unexplained_deductions",
+      chase_payment: "cash_collection", price_fix: "cash_collection", coop_review: "coop",
+    };
     const m = new Map<string, number>();
-    for (const r of open) { const k = areaOf[r.action_type] ?? "other"; m.set(k, (m.get(k) ?? 0) + r.estimated_value_usd); }
+    const add = (type: string | null | undefined, v: number) => { const k = areaOf[type ?? ""] ?? "other"; m.set(k, (m.get(k) ?? 0) + v); };
+    for (const r of open) add(r.action_type, r.estimated_value_usd);
+    for (const i of openItems) add(i.action_type, i.amount_usd ?? 0);
     return [...m.entries()].sort((a, b) => b[1] - a[1]);
-  }, [open]);
+  }, [open, openItems]);
 
   const mine = items
     .filter((i) => i.owner === "Me" && (i.status === "open" || i.status === "in_progress"))
@@ -91,7 +109,7 @@ export default function TodayPage() {
               <div>
                 <div className="text-sm opacity-80">Money at stake</div>
                 <div className="text-4xl font-semibold tabular-nums tracking-tight">{ready ? usd(atStake) : "–"}</div>
-                <div className="text-sm opacity-80">across {open.length} open recommendation{open.length === 1 ? "" : "s"}</div>
+                <div className="text-sm opacity-80">across {stakeLabel}</div>
               </div>
               {byArea.length > 0 && (
                 <div className="space-y-2">

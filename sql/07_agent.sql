@@ -7,7 +7,7 @@ USE WAREHOUSE AMZ_FIN_WH;
 USE SCHEMA AMAZON_FINANCE_APP.APP;
 
 CREATE OR REPLACE AGENT AMAZON_FINANCE_APP.APP.AMAZON_VENDOR_FINANCE_AGENT
-  COMMENT = 'Amazon Vendor Finance analyst: answers from the semantic view, builds dashboards, creates action items'
+  COMMENT = 'Amazon Vendor Finance analyst: answers from the semantic view, builds dashboards, saves insights and action items'
   PROFILE = '{"display_name": "Amazon Vendor Finance"}'
   FROM SPECIFICATION
 $$
@@ -15,8 +15,8 @@ models:
   orchestration: auto
 orchestration:
   budget:
-    seconds: 300
-    tokens: 200000
+    seconds: 900
+    tokens: 400000
 instructions:
   response: |
     You are the Amazon Vendor Finance analyst for a 1P vendor's finance team. You help the team
@@ -34,7 +34,8 @@ instructions:
       shortages, co-op, provisions, disputes, recoveries). Every figure must come from this tool.
     - PlatformSearch: dashboards, insights and recommendations already saved on the platform.
     - SaveDashboard: saves a dashboard and its widgets in one call.
-    - CreateActionItem: adds a follow-up task to the team's action board.
+    - CreateActionItem: adds a single follow-up task to the team's action board.
+    - SaveInsight: records a finding on the Insights page together with the action items that address it.
     - ListUploads: lists tables created from files the team uploaded in chat (CSV/Excel), with columns.
     - QueryUploads: runs one read-only SELECT over tables in AMAZON_FINANCE_APP.UPLOADS.
 
@@ -69,9 +70,23 @@ instructions:
     5. If SaveDashboard returns widget_errors, fix those widgets (ask FinanceAnalyst again) and retry once.
     6. Reply with the dashboard title, ID and a one-line summary of each widget.
 
-    Action items: when the user asks for a follow-up (dispute an invoice, chase a payment, review co-op),
-    first state the item you will create (title, amount, priority, owner, due date) and ask for confirmation.
-    Only call CreateActionItem after the user confirms.
+    Insights and action items:
+    - When the user asks for insights, an analysis of what to act on, recommendations, or action items,
+      find the findings with FinanceAnalyst, then call SaveInsight once per finding. Each finding is an
+      insight (what is happening, why it matters, the headline number) plus the action items that fix it,
+      passed in actions_json. This is how insights and their actions appear, connected, in the app.
+    - Good findings: undisputed shortage deductions, overdue unpaid invoices, co-op invoices with no
+      matching deduction, growing deduction categories, invoices with price or quantity discrepancies,
+      large claims not yet deducted. Save up to 4 insights, each with up to 5 actions, highest value first.
+    - Every number (metric value, action amount, entity_id) must come from FinanceAnalyst results. Pass the
+      final FinanceAnalyst SQL behind the headline number as evidence_sql.
+    - The data ends in April 2025: measure "overdue", "recent" and "growing" as of the latest date in the
+      data, not today.
+    - Create right away when the user asks; do not ask for confirmation. Leave owner empty unless the user
+      names one; use priority high for amounts of $10,000 or more; due dates 14 days from today.
+    - Use CreateActionItem only for a single follow-up the user asks for that is not part of a finding.
+    - Only ask before creating when it is your own suggestion that the user did not request.
+    - After saving, list each insight with its ID and its action items with their IDs and amounts.
   sample_questions:
     - question: "Build a shortage recovery dashboard"
     - question: "What did Amazon deduct last quarter, by category?"
@@ -112,7 +127,7 @@ tools:
   - tool_spec:
       type: generic
       name: CreateActionItem
-      description: "Adds a follow-up task to the team's action board. Only call after the user confirms. Returns action_id."
+      description: "Adds a follow-up task to the team's action board (shown on the Action items page). Returns action_item_id."
       input_schema:
         type: object
         properties:
@@ -147,6 +162,41 @@ tools:
             type: string
             description: "Always 'agent'"
         required: [action_type, title, entity_type, entity_id, amount_usd, priority, owner, due_date, notes, source]
+  - tool_spec:
+      type: generic
+      name: SaveInsight
+      description: "Saves one insight to the Insights page together with the action items that address it (shown on the Action items page, linked to the insight). Validates everything first; nothing is saved if any action is invalid. Returns insight_id and action_item_ids."
+      input_schema:
+        type: object
+        properties:
+          problem_area:
+            type: string
+            description: "One of: shortage_recovery, unexplained_deductions, cash_collection, coop, general"
+          severity:
+            type: string
+            description: "high, medium or low (high = $50,000 or more at stake, or growing fast)"
+          title:
+            type: string
+            description: "The finding in one line, e.g. '$129K of shortage deductions were never disputed'"
+          summary:
+            type: string
+            description: "Two or three sentences: what is happening, why it matters, what to do"
+          metric_name:
+            type: string
+            description: "Label for the headline number, with $ if it is money, e.g. 'Undisputed shortage $'"
+          current_value:
+            type: number
+            description: "The headline number from FinanceAnalyst"
+          comparison_value:
+            type: number
+            description: "Optional earlier or baseline value to compare with; omit or null if none"
+          evidence_sql:
+            type: string
+            description: "The final FinanceAnalyst SQL that produces the headline number"
+          actions_json:
+            type: string
+            description: "JSON array of action items: [{action_type (dispute_shortage|resolve_deduction|chase_payment|coop_review|price_fix|other), title, entity_type, entity_id, amount_usd, priority, owner, due_date (YYYY-MM-DD), notes}]"
+        required: [problem_area, severity, title, summary, metric_name, current_value, evidence_sql, actions_json]
   - tool_spec:
       type: generic
       name: ListUploads
@@ -185,6 +235,12 @@ tool_resources:
   CreateActionItem:
     type: procedure
     identifier: AMAZON_FINANCE_APP.OPS.CREATE_ACTION_ITEM
+    execution_environment:
+      type: warehouse
+      warehouse: AMZ_FIN_WH
+  SaveInsight:
+    type: procedure
+    identifier: AMAZON_FINANCE_APP.OPS.SAVE_INSIGHT
     execution_environment:
       type: warehouse
       warehouse: AMZ_FIN_WH

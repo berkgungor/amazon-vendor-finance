@@ -75,6 +75,9 @@ export type ActionItem = {
   outcome_amount_usd?: number | null;
   source?: "agent" | "user" | "alert" | "recommendation" | string | null;
   recommendation_id?: string | null;
+  /** The insight this action addresses (OPS.SAVE_INSIGHT), shown as a link on the Action items page. */
+  insight_id?: string | null;
+  insight_title?: string | null;
   created_at?: string;
 };
 
@@ -88,6 +91,7 @@ export type AgentEvent =
   | { type: "dashboard"; id: string; name: string; widgets: number }
   | { type: "action_items"; items: ActionItem[] }
   | { type: "upload"; upload: UploadResult }
+  | { type: "insight"; id: string; title: string; actions: number }
   | { type: "error"; text: string }
   | { type: "done"; text: string; chatId: string };
 
@@ -124,6 +128,8 @@ export type Insight = {
   evidence_sql?: string | null;
   related_entity?: string | null;
   dashboard_id?: string | null;
+  /** Action items created for this insight. */
+  actions?: Pick<ActionItem, "id" | "title" | "status" | "priority" | "amount_usd" | "owner">[];
 };
 
 /** OPS.RECOMMENDED_ACTIONS row (sql/04_ops_tables.sql). */

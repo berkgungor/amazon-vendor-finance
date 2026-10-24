@@ -5,6 +5,7 @@ import { MessageSquarePlus, Search, Sparkles, Trash2 } from "lucide-react";
 import { Thread } from "@/components/assistant-ui/elements/thread.aui";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useOps } from "@/lib/ops-store";
 import type { Chat as ChatT, Message } from "@/lib/types";
 import { chatToolkit } from "./chat/toolkit";
 import { fromStored, useFinanceRuntime } from "./chat/use-finance-runtime";
@@ -44,9 +45,12 @@ export function Chat() {
     fetch("/api/chats").then(async (r) => r.ok && setChats(await r.json())).catch(() => {});
   }, [reloadKey]);
 
+  const { reload: reloadOps } = useOps();
   const runtimeOpts = useMemo(
-    () => ({ chatId, onChatId: setChatId, onSettled: () => setReloadKey((k) => k + 1) }),
-    [chatId],
+    // After each answer, refresh the chat list and the shared store, so action items the agent
+    // created show up on the Action items and Today pages without a page reload.
+    () => ({ chatId, onChatId: setChatId, onSettled: () => { setReloadKey((k) => k + 1); reloadOps(); } }),
+    [chatId, reloadOps],
   );
   const { runtime, setMessages } = useFinanceRuntime(runtimeOpts);
   const config = useMemo(() => AuiConfig({ tools: Tools({ toolkit: chatToolkit }), suggestions: Suggestions(SUGGESTIONS) }), []);

@@ -120,11 +120,13 @@ export async function addWidget(dashboardId: string, w: { type: string; title: s
 // ---------- action items ----------
 export async function listActionItems(): Promise<ActionItem[]> {
   const rows = await sql<ActionItem>(
-    `SELECT action_item_id AS id, title, action_type, notes, owner, priority, status, TO_VARCHAR(due_date) AS due_date,
-            amount_usd, outcome_amount_usd, source, created_at
-       FROM AMAZON_FINANCE_APP.OPS.ACTION_ITEMS
-      WHERE status <> 'dismissed'
-      ORDER BY IFF(status = 'done', 1, 0), DECODE(priority, 'high', 0, 'medium', 1, 2), due_date NULLS LAST, created_at DESC`,
+    `SELECT a.action_item_id AS id, a.title, a.action_type, a.notes, a.owner, a.priority, a.status,
+            TO_VARCHAR(a.due_date) AS due_date, a.amount_usd, a.outcome_amount_usd, a.source, a.created_at,
+            a.recommendation_id, a.insight_id, i.title AS insight_title
+       FROM AMAZON_FINANCE_APP.OPS.ACTION_ITEMS a
+       LEFT JOIN AMAZON_FINANCE_APP.OPS.INSIGHTS i ON i.insight_id = a.insight_id
+      WHERE a.status <> 'dismissed'
+      ORDER BY IFF(a.status = 'done', 1, 0), DECODE(a.priority, 'high', 0, 'medium', 1, 2), a.due_date NULLS LAST, a.created_at DESC`,
   );
   return rows.map((r) => ({
     ...r,
@@ -159,14 +161,27 @@ export async function updateActionItem(id: string, u: { status?: ActionStatus; o
 
 // ---------- insights & recommendations ----------
 export async function listInsights(): Promise<Insight[]> {
-  return sql<Insight>(
-    `SELECT insight_id AS id, business_problem AS problem_area, severity, title, summary, metric_name AS metric,
-            current_value, comparison_value, change_pct, evidence_sql,
-            IFF(entity_id IS NULL, NULL, entity_type || ' ' || entity_id) AS related_entity, dashboard_id, generated_at
-       FROM AMAZON_FINANCE_APP.OPS.INSIGHTS
-      WHERE status = 'active'
-      ORDER BY DECODE(severity, 'high', 0, 'medium', 1, 2), generated_at DESC LIMIT 50`,
+  const rows = await sql<Insight & { actions: unknown }>(
+    `SELECT i.insight_id AS id, i.business_problem AS problem_area, i.severity, i.title, i.summary, i.metric_name AS metric,
+            i.current_value, i.comparison_value, i.change_pct, i.evidence_sql,
+            IFF(i.entity_id IS NULL, NULL, i.entity_type || ' ' || i.entity_id) AS related_entity, i.dashboard_id, i.generated_at,
+            ARRAY_AGG(IFF(a.action_item_id IS NULL, NULL,
+                          OBJECT_CONSTRUCT('id', a.action_item_id, 'title', a.title, 'status', a.status,
+                                           'priority', a.priority, 'amount_usd', a.amount_usd, 'owner', a.owner)))
+              WITHIN GROUP (ORDER BY a.amount_usd DESC NULLS LAST) AS actions
+       FROM AMAZON_FINANCE_APP.OPS.INSIGHTS i
+       LEFT JOIN AMAZON_FINANCE_APP.OPS.ACTION_ITEMS a ON a.insight_id = i.insight_id AND a.status <> 'dismissed'
+      WHERE i.status = 'active'
+      GROUP BY ALL
+      ORDER BY DECODE(i.severity, 'high', 0, 'medium', 1, 2), i.generated_at DESC LIMIT 50`,
   );
+  return rows.map((r) => ({
+    ...r,
+    current_value: r.current_value == null ? null : Number(r.current_value),
+    comparison_value: r.comparison_value == null ? null : Number(r.comparison_value),
+    change_pct: r.change_pct == null ? null : Number(r.change_pct),
+    actions: (parse<Insight["actions"]>(r.actions, []) ?? []).map((a) => ({ ...a, amount_usd: a.amount_usd == null ? null : Number(a.amount_usd) })),
+  }));
 }
 
 export async function listRecommendations(): Promise<Recommendation[]> {
