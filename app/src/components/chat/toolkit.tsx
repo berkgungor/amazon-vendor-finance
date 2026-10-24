@@ -3,7 +3,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import Link from "next/link";
 import type { Toolkit, ToolCallMessagePartComponent } from "@assistant-ui/react";
-import { AlertCircle, ArrowUpRight, CheckCircle2, CheckSquare, Database, FileSpreadsheet, LayoutDashboard, Loader2, Plus, Search } from "lucide-react";
+import { AlertCircle, ArrowUpRight, CheckCircle2, CheckSquare, Database, FileSpreadsheet, LayoutDashboard, Lightbulb, Loader2, Plus, Search } from "lucide-react";
 import { DecisionBar } from "@/components/DecisionBar";
 import { ChartCard } from "@/components/ChartCard";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +17,7 @@ const TOOL_LABEL: Record<string, { label: string; icon: typeof Database }> = {
   PlatformSearch: { label: "Cortex Search · saved dashboards & insights", icon: Search },
   SaveDashboard: { label: "Saving dashboard", icon: LayoutDashboard },
   CreateActionItem: { label: "Adding action item", icon: CheckSquare },
+  SaveInsight: { label: "Saving insight", icon: Lightbulb },
   ListUploads: { label: "Uploaded files · listing tables", icon: FileSpreadsheet },
   QueryUploads: { label: "Uploaded files · querying", icon: FileSpreadsheet },
 };
@@ -185,6 +186,22 @@ const ActionsUI: ToolCallMessagePartComponent = ({ result }) => {
   );
 };
 
+const InsightUI: ToolCallMessagePartComponent = ({ result }) => {
+  const i = result as Extract<AgentEvent, { type: "insight" }> | undefined;
+  if (!i) return null;
+  return (
+    <Card size="sm" className="my-3 bg-gradient-to-br from-warning-soft to-background">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><Lightbulb className="size-4 text-warning" /> {i.title}</CardTitle>
+        <CardDescription>Insight saved · {i.actions} linked action item{i.actions === 1 ? "" : "s"}</CardDescription>
+        <CardAction>
+          <Link href="/insights" className={buttonVariants({ size: "sm", variant: "ghost" })}>View insights <ArrowUpRight /></Link>
+        </CardAction>
+      </CardHeader>
+    </Card>
+  );
+};
+
 const UploadUI: ToolCallMessagePartComponent = ({ result }) => {
   const u = result as UploadResult | undefined;
   if (!u) return null;
@@ -232,5 +249,6 @@ export const chatToolkit: Toolkit = {
   [UI_TOOLS.dashboard]: { type: "backend", render: DashboardUI },
   [UI_TOOLS.actions]: { type: "backend", render: ActionsUI },
   [UI_TOOLS.upload]: { type: "backend", render: UploadUI },
+  [UI_TOOLS.insight]: { type: "backend", render: InsightUI },
   [UI_TOOLS.error]: { type: "backend", render: ErrorUI },
 };

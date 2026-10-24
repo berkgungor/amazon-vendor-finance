@@ -1,7 +1,7 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, Lightbulb, MessageSquare } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, CheckSquare, Lightbulb, MessageSquare } from "lucide-react";
 import { AREA } from "@/lib/areas";
 import { DecisionBar } from "@/components/DecisionBar";
 import { RecommendationList } from "@/components/RecommendationList";
@@ -23,14 +23,27 @@ const metricValue = (i: Insight, v: number | null) =>
   v == null ? "–" : /\$/.test(i.metric) ? usd(v) : /rate|%/i.test(i.metric) ? `${v}%` : Intl.NumberFormat("en-US").format(v);
 
 export default function InsightsPage() {
-  const { ready, sample, insights, recommendations: recs } = useOps();
+  const { ready, sample, insights, recommendations: recs, reload } = useOps();
+  // Insights and their action items are written by the agent, so load fresh data on every visit.
+  useEffect(() => { reload(); }, [reload]);
   const [area, setArea] = useState("all");
 
   const open = useMemo(
     () => recs.filter((r) => r.status === "new").sort((a, b) => b.estimated_value_usd - a.estimated_value_usd),
     [recs],
   );
-  const totalValue = open.reduce((s, r) => s + r.estimated_value_usd, 0);
+  // Insights from the agent come with action items already created, so the value at stake is the
+  // open action items linked to insights plus any recommendations still waiting for a decision.
+  const insightActions = useMemo(
+    () => insights.flatMap((i) => (i.actions ?? []).filter((a) => a.status === "open" || a.status === "in_progress"))
+      .sort((a, b) => (b.amount_usd ?? 0) - (a.amount_usd ?? 0)),
+    [insights],
+  );
+  const totalValue = open.reduce((s, r) => s + r.estimated_value_usd, 0) + insightActions.reduce((s, a) => s + (a.amount_usd ?? 0), 0);
+  const counts = [
+    insightActions.length ? `${insightActions.length} open action item${insightActions.length === 1 ? "" : "s"} from insights` : "",
+    open.length ? `${open.length} open recommendation${open.length === 1 ? "" : "s"}` : "",
+  ].filter(Boolean).join(" and ") || "no open actions or recommendations";
   const shown = insights.filter((i) => area === "all" || i.problem_area === area);
 
   return (
@@ -100,6 +113,23 @@ export default function InsightsPage() {
                     </div>
                   </div>
                   {i.related_entity && <span className="text-xs text-muted-foreground">{i.related_entity}</span>}
+                  {!!i.actions?.length && (
+                    <div className="w-full space-y-1.5 border-t pt-3">
+                      <div className="flex items-center justify-between text-xs font-medium text-muted-foreground">
+                        <span className="flex items-center gap-1.5"><CheckSquare className="size-3.5" /> {i.actions.length} action item{i.actions.length === 1 ? "" : "s"} from this insight</span>
+                        <Link href="/actions" className="inline-flex items-center gap-0.5 hover:text-foreground">Action items <ArrowUpRight className="size-3" /></Link>
+                      </div>
+                      <ul className="divide-y rounded-md border">
+                        {i.actions.map((a) => (
+                          <li key={a.id} className="flex items-center gap-2 px-2.5 py-1.5 text-sm">
+                            <span className={`flex-1 truncate ${a.status === "done" ? "text-muted-foreground line-through" : ""}`}>{a.title}</span>
+                            {a.amount_usd != null && <span className="tabular-nums text-muted-foreground">{usd(a.amount_usd)}</span>}
+                            <Badge variant="outline" className="text-[11px]">{humanize(a.status)}</Badge>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                   <div className="flex w-full flex-wrap items-center justify-between gap-2 border-t pt-3">
                     <DecisionBar
                       title={i.title}
@@ -121,14 +151,34 @@ export default function InsightsPage() {
         <aside aria-labelledby="recs" className="space-y-4 lg:sticky lg:top-6 lg:self-start">
           <Card size="sm" className="bg-primary text-primary-foreground">
             <CardContent>
-              <div id="recs" className="text-sm opacity-80">Recommended actions</div>
+              <div id="recs" className="text-sm opacity-80">Value at stake</div>
               <div className="mt-1 text-3xl font-semibold tabular-nums tracking-tight">{ready ? usd(totalValue) : "–"}</div>
-              <div className="text-sm opacity-80">estimated value across {open.length} open recommendation{open.length === 1 ? "" : "s"}</div>
+              <div className="text-sm opacity-80">across {counts}</div>
             </CardContent>
           </Card>
 
           {!ready && [0, 1].map((i) => <div key={i} className="h-40 animate-pulse rounded-xl bg-muted" />)}
-          {ready && open.length === 0 && (
+          {ready && insightActions.length > 0 && (
+            <Card size="sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-sm"><CheckSquare className="size-4 text-success" /> Largest open actions</CardTitle>
+                <CardAction>
+                  <Link href="/actions" className={buttonVariants({ size: "xs", variant: "ghost" })}>All <ArrowUpRight /></Link>
+                </CardAction>
+              </CardHeader>
+              <CardContent>
+                <ul className="divide-y text-sm">
+                  {insightActions.slice(0, 8).map((a) => (
+                    <li key={a.id} className="flex items-center gap-2 py-1.5 first:pt-0 last:pb-0">
+                      <span className="flex-1 truncate" title={a.title}>{a.title}</span>
+                      {a.amount_usd != null && <span className="shrink-0 tabular-nums font-medium">{usd(a.amount_usd)}</span>}
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
+          {ready && open.length === 0 && insightActions.length === 0 && (
             <Card className="border-dashed"><CardContent className="py-8 text-center text-sm text-muted-foreground">You&apos;re all caught up.</CardContent></Card>
           )}
           <RecommendationList recs={open} />

@@ -17,6 +17,7 @@ const STATUS: Record<string, string> = {
   PlatformSearch: "Searching saved dashboards and insights…",
   SaveDashboard: "Saving the dashboard…",
   CreateActionItem: "Adding the action item…",
+  SaveInsight: "Saving the insight and its action items…",
 };
 
 type ToolUse = { tool_use_id: string; name: string; input?: Record<string, unknown> };
@@ -49,13 +50,14 @@ class EventMapper {
     if (STATUS[t.name]) this.status(STATUS[t.name]);
     // Internal steps (semantic context, SQL execution) only update the status line.
     if (t.name === "system_execute_sql" || !t.input || !Object.keys(t.input).length || "pruning_question" in t.input) return;
-    this.emit({ type: "tool", name: t.name, input: t.name === "SaveDashboard" ? { title: t.input.title } : t.input });
+    const brief = t.name === "SaveDashboard" || t.name === "SaveInsight" ? { title: t.input.title } : t.input;
+    this.emit({ type: "tool", name: t.name, input: brief });
   }
 
   toolResult(r: ToolResult) {
     const body = r.content?.[0]?.json ?? {};
     if (typeof body.sql === "string") this.sqlByTool.set(r.tool_use_id, body.sql);
-    if (r.name !== "SaveDashboard" && r.name !== "CreateActionItem") return;
+    if (r.name !== "SaveDashboard" && r.name !== "CreateActionItem" && r.name !== "SaveInsight") return;
 
     const result = typeof body.result === "string" ? safeJson(body.result) : (body.result as Record<string, unknown> | undefined);
     if (!result?.ok) {
@@ -64,6 +66,29 @@ class EventMapper {
     }
     if (r.name === "SaveDashboard") {
       this.emit({ type: "dashboard", id: String(result.dashboard_id), name: String(result.title ?? "Dashboard"), widgets: Number(result.widgets ?? 0) });
+    } else if (r.name === "SaveInsight") {
+      // One insight plus the action items it created, in the order the agent sent them.
+      const input = this.inputs.get(r.tool_use_id)?.input ?? {};
+      const ids = (result.action_item_ids as string[] | undefined) ?? [];
+      const sent = safeJsonArray(String(input.actions_json ?? "[]"));
+      this.emit({ type: "insight", id: String(result.insight_id), title: String(result.title ?? input.title ?? "Insight"), actions: ids.length });
+      if (ids.length) {
+        this.emit({
+          type: "action_items",
+          items: ids.map((id, i): ActionItem => ({
+            id,
+            title: String(sent[i]?.title ?? "Action item"),
+            owner: (sent[i]?.owner as string) || null,
+            priority: (sent[i]?.priority as ActionItem["priority"]) ?? "medium",
+            due_date: (sent[i]?.due_date as string) || null,
+            amount_usd: sent[i]?.amount_usd == null ? null : Number(sent[i].amount_usd),
+            action_type: (sent[i]?.action_type as string) || undefined,
+            source: "agent",
+            status: "open",
+            insight_id: String(result.insight_id),
+          })),
+        });
+      }
     } else {
       const input = this.inputs.get(r.tool_use_id)?.input ?? {};
       const item: ActionItem = {
@@ -97,6 +122,15 @@ class EventMapper {
       else if (c.type === "tool_result") this.toolResult(c.tool_result as ToolResult);
       else if (c.type === "table") this.table(c.table as Table);
     }
+  }
+}
+
+function safeJsonArray(s: string): Record<string, unknown>[] {
+  try {
+    const v = JSON.parse(s);
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
   }
 }
 

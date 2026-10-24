@@ -1,7 +1,8 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { CheckSquare, Circle, CircleCheck, CircleDot, Plus, Sparkles, UserRound, X } from "lucide-react";
+import Link from "next/link";
+import { CheckSquare, Circle, CircleCheck, CircleDot, Lightbulb, Plus, Sparkles, UserRound, X } from "lucide-react";
 import { OutcomeDialog } from "@/components/DecisionDialogs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,7 +31,9 @@ const PRIORITY: Record<string, string> = {
 const SOURCE: Record<string, string> = { recommendation: "From recommendation", agent: "From assistant", alert: "From alert", playbook: "From playbook" };
 
 export default function ActionsPage() {
-  const { ready, sample, items: all, metrics, updateItems, createItems, removeItem } = useOps();
+  const { ready, sample, items: all, metrics, updateItems, createItems, removeItem, reload } = useOps();
+  // Items can be created elsewhere (the agent, recommendations), so load fresh data on every visit.
+  useEffect(() => { reload(); }, [reload]);
   const [title, setTitle] = useState("");
   const [scope, setScope] = useState<"all" | "mine" | "overdue">("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -166,6 +169,11 @@ export default function ActionsPage() {
                             {i.due_date && <span className={late ? "font-medium text-destructive" : ""}>· {late ? "overdue" : "due"} {i.due_date}</span>}
                             {i.outcome_amount_usd ? <span className="font-medium text-success">· {usd(i.outcome_amount_usd)} recovered</span> : null}
                           </div>
+                          {i.insight_id && (
+                            <Link href="/insights" className="ml-6 flex items-center gap-1 truncate text-[11px] text-muted-foreground hover:text-foreground" title={i.insight_title ?? undefined}>
+                              <Lightbulb className="size-3 shrink-0 text-warning" /> <span className="truncate">From insight: {i.insight_title ?? i.insight_id}</span>
+                            </Link>
+                          )}
                           <div className="flex items-center justify-between pl-6">
                             {i.source && SOURCE[i.source] ? (
                               <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"><Sparkles className="size-3" />{SOURCE[i.source]}</span>
