@@ -1,0 +1,25 @@
+# Agent evaluation config. Upload to @AMAZON_FINANCE_APP.OPS.EVAL_CONFIG and start a run with
+# CALL EXECUTE_AI_EVALUATION('START', OBJECT_CONSTRUCT('run_name', '<name>'), '@AMAZON_FINANCE_APP.OPS.EVAL_CONFIG/agent_evaluation_config.yaml')
+# from schema AMAZON_FINANCE_APP.APP. The dataset block creates AMZ_FIN_EVAL_V1 on the first run; remove it for later runs.
+dataset:
+  dataset_type: "CORTEX AGENT"
+  table_name: "AMAZON_FINANCE_APP.OPS.EVAL_QUESTIONS"
+  dataset_name: "AMZ_FIN_EVAL_V1"
+  column_mapping:
+    query_text: "INPUT_QUERY"
+    ground_truth: "EXPECTED_OUTPUT"
+evaluation:
+  agent_params:
+    agent_name: "AMAZON_FINANCE_APP.APP.AMAZON_VENDOR_FINANCE_AGENT"
+    agent_type: "CORTEX AGENT"
+  run_params:
+    label: "Baseline: 29 read-only finance questions"
+    description: "Ground truth from evals/ground_truth.sql (direct SQL over STAGING views)"
+  source_metadata:
+    type: "dataset"
+    dataset_name: "AMZ_FIN_EVAL_V1"
+metrics:
+  - name: "answer_correctness"
+    version: "v3"
+  - name: "logical_consistency"
+    version: "v3"
